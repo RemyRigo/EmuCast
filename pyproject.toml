@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emucast"
+version = "0.1.0"
+description = "Emulator for time series forecasting"
+authors = [{ name="Rémy Rigo-Mariani", email="remy.rigo-mariani@grenoble-inp.fr" }]
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+            "pandas",
+            "numpy",
+            "matplotlib",
+            "seaborn",
+            "setuptools"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["figures*"]
+
+[tool.setuptools.package-data]
+emucast = [
+    "data/*",
+    "notebooks/*"
+]
