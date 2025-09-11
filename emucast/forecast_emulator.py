@@ -416,13 +416,13 @@ class ForecastEmulator:
         return best_profile, error_profile
 
     def forecast(self,
-                start_time,
-                duration_minutes,
-                target_error,
-                reference=None,
-                n_profiles = None,
-                metric="nrmse",
-                selection = 'closest'  #selection oprion before forecast tuning
+                start_time : datetime,
+                duration_minutes : int,
+                target_error : float,
+                reference : pd.Series = None,
+                n_profiles : int = 300,
+                metric : str = "nrmse",
+                selection : str = 'closest'  #selection oprion before forecast tuning
                 ):
 
         if n_profiles is None :
