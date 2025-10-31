@@ -104,8 +104,8 @@ is run on a rolling windows basis with successive forecast updates over time.
 
 Sample time series from open data sets are included in the package (`emucast.data`) with :
 - a residential electircal load 
-(in kW), solar generation profile (in kW) - [source](https://your-link-here.com)
-- and day-ahead energy prices (in €/MWh) - [source](https://newtransparency.entsoe.eu/market/energyPrices2C%22dt%22%3A)
+(in kW), solar generation profile (in kW) - [source](https://www.kaggle.com/datasets/pythonafroz/electricity-demand-and-solar-generation-data-uk/data)
+- and day-ahead energy prices (in €/MWh) - [source](https://newtransparency.entsoe.eu)
 
 ```python
 from emucast.data import load_sample_data, pv_sample_data, price_sample_data
