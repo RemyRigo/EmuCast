@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def validate_timeseries(ts_in):
     # Check it's a pandas Series or DataFrame
@@ -17,11 +16,6 @@ def validate_timeseries(ts_in):
     # Check for missing values
     if ts_in.isnull().any().any():
         raise ValueError("Time series contains missing values.")
-
-    # Check for regular time intervals
-    time_diffs = ts_in.index.to_series().diff().dropna()
-    if not np.allclose(time_diffs, time_diffs.iloc[0]):
-        raise ValueError("Time series does not have regular time intervals.")
 
     # Check for monotonic index
     if not ts_in.index.is_monotonic_increasing:
