@@ -65,7 +65,7 @@ ForecastEmulator.forecast( start_time : datetime,  # start datetime for the fore
                           )
 ```
 `ForecastEmulator.forecast`:
-- checks that the inputs `start_time` and `start_time` (if provided)  are valid.
+- checks that the inputs `start_time` and `reference` (if provided)  are valid.
 - generates several profiles based on the transition matrics and `duration_minutes`.
 - compute errors values from the reference with the given `metric` for all the profiles.
 - select and tune a a single profile to match `start_time` value with the given `metric`.
