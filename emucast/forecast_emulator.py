@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import random
+from tqdm import tqdm
 
 from utils import morph_nrmse,morph_nmae,morph_eof
 from utils import nrmse,nmae,eof
@@ -44,46 +46,14 @@ class ForecastEmulator:
         self.deltaT = pd.to_timedelta(deltaT)
 
         # Generate the transition matrix
-        self.state_maps = self.set_states(self.ts_in, self.nb_states)
+        self.state_maps, self.state_maps_arr = self.set_states(self.ts_in, self.nb_states)
         ts_disrete = self.rediscretize_ts_in(self.ts_in, self.state_maps)
-        self.trans_matrices= self.compute_transition_matrices(ts_disrete, self.state_maps)
-
-        # Transition matrices: dict[time] -> ndarray -- for code optimization purposes
-        self.trans_matrices_arr = {t: np.array(mat) for t,mat in self.trans_matrices.items()}
-
-        # State maps: dict[time] -> ndarray of representative values -- for code optimization purposes
-        self.state_maps_arr = {
-            t: (
-                df["value"].to_numpy()
-                if "value" in df.columns
-                else ((df["lower"] + df["upper"]) / 2).to_numpy()
-            )
-            for t,df in self.state_maps.items()
-        }
-
-        # Clean transition matrix for sum of probability = to 1 and remove NaN
-        for t,mat in self.trans_matrices_arr.items():
-
-            # Replace NaN with 0
-            mat = np.nan_to_num(mat,nan = 0.0)
-
-            # Compute row sums
-            row_sums = mat.sum(axis = 1,keepdims = True)
-
-            # Handle invalid rows (sum = 0)
-            invalid_rows = (row_sums.flatten() == 0)
-            if np.any(invalid_rows):
-                mat[invalid_rows] = 1.0 / mat.shape[1]
-                row_sums = mat.sum(axis = 1,keepdims = True)
-
-            # Normalize
-            self.trans_matrices_arr[t] = mat / row_sums
-
+        self.trans_matrices , self.trans_matrices_arr = self.compute_transition_matrices(ts_disrete, self.state_maps)
 
 
     @staticmethod
     def set_states(ts_in: pd.DataFrame,
-                   nb_states: dict):
+                   nb_states: int):
 
         # Extract all unique times of day (e.g. 15-min intervals)
         unique_times = np.unique(ts_in.index.time)
@@ -121,7 +91,17 @@ class ForecastEmulator:
 
             state_maps[t] = state_df
 
-        return state_maps
+
+        state_maps_arr = {
+            t: (
+                df["value"].to_numpy()
+                if "value" in df.columns
+                else ((df["lower"] + df["upper"]) / 2).to_numpy()
+            )
+            for t,df in state_maps.items()
+        }
+
+        return state_maps, state_maps_arr
 
     @staticmethod
     def rediscretize_ts_in(ts_in: pd.DataFrame,
@@ -197,7 +177,28 @@ class ForecastEmulator:
             row_sums[row_sums == 0] = 1  # avoid division by zero
             trans_matrices[t] = mat / row_sums
 
-        return trans_matrices
+        # Transition matrices: dict[time] -> ndarray -- for code optimization purposes
+        trans_matrices_arr = {t: np.array(mat) for t,mat in trans_matrices.items()}
+
+        # Clean transition matrix for sum of probability = to 1 and remove NaN
+        for t,mat in trans_matrices_arr.items():
+
+            # Replace NaN with 0
+            mat = np.nan_to_num(mat,nan = 0.0)
+
+            # Compute row sums
+            row_sums = mat.sum(axis = 1,keepdims = True)
+
+            # Handle invalid rows (sum = 0)
+            invalid_rows = (row_sums.flatten() == 0)
+            if np.any(invalid_rows):
+                mat[invalid_rows] = 1.0 / mat.shape[1]
+                row_sums = mat.sum(axis = 1,keepdims = True)
+
+            # Normalize
+            trans_matrices_arr[t] = mat / row_sums
+
+        return trans_matrices , trans_matrices_arr
 
 
     @staticmethod
@@ -319,6 +320,80 @@ class ForecastEmulator:
         # )
 
         return profiles
+
+    def parameters_tuning(self, display_results = True):
+
+        print('-------------------------------')
+        print(f'Tune "nb_states" parameters ...')
+
+        # setup parameters for the tuning
+        Ndates = 3
+        Nruns = 10
+        nb_states_test = np.linspace(5,100,20,dtype = int)
+        n_steps = int(3600 * 24 / self.deltaT.total_seconds())
+
+        # generate random start dates for the tuning
+        start_time = self.ts_in.index[0]
+        end_time = self.ts_in.index[-1]
+        max_start = end_time - timedelta(hours = 24)  # last start time possible
+        all_times = pd.date_range(start_time,max_start,freq = self.deltaT)
+        rand_starts = random.sample(list(all_times),Ndates)
+
+        # build reference profile along the random dates
+        ref_arr = []
+        for start in rand_starts:
+            # Compute timestamps
+            timestamps = [start + i * self.deltaT for i in range(n_steps)]
+            # Extract ref profile
+            ref_profile = self.ts_in.loc[timestamps].values
+            ref_arr = np.concatenate((ref_arr,ref_profile))
+        # compute reference deviations
+        delta_ref = np.diff(ref_arr)
+
+        # initialize tuning output
+        delta_mean_arr = np.zeros((len(nb_states_test),Nruns))
+
+        # Loop along all the tests
+        total = Ndates * Nruns * len(nb_states_test)
+        with tqdm(total = total) as pbar:
+            for i,nb_states in enumerate(nb_states_test):
+                # Retrain the emulator model for given nb_states
+                self.nb_states = nb_states
+                self.state_maps,self.state_maps_arr = self.set_states(self.ts_in,self.nb_states)
+                ts_disrete = self.rediscretize_ts_in(self.ts_in,self.state_maps)
+                self.trans_matrices,self.trans_matrices_arr = self.compute_transition_matrices(ts_disrete,
+                                                                                               self.state_maps
+                                                                                               )
+                for j in range(Nruns):
+                    # generate MC model profiles for given run and nb_states
+                    model_arr = []
+                    for start in rand_starts:
+                        model_profile = self.generate_profiles(start_hour = start.hour,
+                                                                   start_minute = start.minute,
+                                                                   n_steps = n_steps
+                                                                   )
+                        model_arr = np.concatenate((model_arr,model_profile[:,0]))
+
+                        pbar.update(1)
+
+                    # compute model deviations for given run and nb_states
+                    delta_model = np.diff(model_arr)
+                    delta_mean_arr[i,j] = abs(np.mean(abs(delta_ref)) - np.mean(abs(delta_model)))
+
+        # compute best value for nb_states based on mean value of deviations compared to reference and graphical
+        # elbow method
+        mean_delta = np.mean(delta_mean_arr,axis = 1)
+        line = np.linspace(mean_delta[0],mean_delta[-1],len(mean_delta))
+        distances = np.abs(mean_delta - line)
+        elbow_index = np.argmax(distances)
+        self.nb_states = int(nb_states_test[elbow_index])
+        print(f"Selected value : {nb_states_test[elbow_index]}")
+
+        if display_results :
+            plt.plot(nb_states_test,mean_delta, marker = 'o')
+            plt.xlabel("nb_states")
+            plt.ylabel("deviation error with reference")
+            plt.show()
 
 
     def generate_forecast_profiles(self,
