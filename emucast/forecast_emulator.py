@@ -396,6 +396,49 @@ class ForecastEmulator:
             plt.show()
 
 
+        print('-------------------------------')
+        print(f'Tune "nb_forecast_profiles" parameter ...')
+
+        # setup parameters for the tuning
+        Ndates = 3
+        Nruns = 10
+        nb_profiles_test = np.linspace(50,500,10, dtype=int)
+
+        # Generate profile along the random dates
+        perf_arr = np.zeros((len(nb_profiles_test),Nruns))
+        total = Ndates * Nruns * len(nb_profiles_test)
+        with tqdm(total = total) as pbar:
+            for i,nb_profiles in enumerate(nb_profiles_test):
+                for start in rand_starts:
+                    for j in range(Nruns):
+                        _,_,errors = self.generate_forecast_profiles(reference = None,
+                                                                         start_time = start,
+                                                                         duration_minutes = 60 * 24,
+                                                                         n_profiles = nb_profiles
+                                                                         )
+                        # Define bins
+                        bins = np.linspace(0,1,101)  # 100 bins
+                        filled_bins = len(np.unique(np.digitize(errors,bins) - 1)
+                                          )  # Subtract 1 to convert to 0-based index
+                        value_range = np.max(errors) - np.min(errors)
+                        perf_arr[i,j] = filled_bins + value_range
+
+                        pbar.update(1)
+
+        # compute best value for nb_profiles based on performance and graphical elbow method
+        mean_perf = np.mean(perf_arr,axis = 1)
+        line = np.linspace(mean_perf[0],mean_perf[-1],len(mean_perf))
+        distances = np.abs(mean_perf - line)
+        elbow_index = np.argmax(distances)
+        self.nb_forecast_profiles = int(nb_profiles_test[elbow_index])
+        print(f"Selected value : {nb_profiles_test[elbow_index]}")
+
+        if display_results :
+            plt.plot(nb_profiles_test,mean_perf,marker = 'o')
+            plt.xlabel('nb_profiles')
+            plt.ylabel('score')
+            plt.show()
+
     def generate_forecast_profiles(self,
                                   n_profiles,
                                   start_time,
