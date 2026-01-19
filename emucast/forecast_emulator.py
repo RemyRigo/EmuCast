@@ -45,6 +45,11 @@ class ForecastEmulator:
         self.nb_forecast_profiles = nb_forecast_profiles
         self.deltaT = pd.to_timedelta(deltaT)
 
+        # Compute mean, min and max values for every hour, minute time steps
+        self.ts_in_min = self.ts_in.groupby([self.ts_in.index.hour,self.ts_in.index.minute]).min()
+        self.ts_in_max = self.ts_in.groupby([self.ts_in.index.hour,self.ts_in.index.minute]).max()
+        self.ts_in_mean = self.ts_in.groupby([self.ts_in.index.hour,self.ts_in.index.minute]).mean()
+
         # Generate the transition matrix
         self.state_maps, self.state_maps_arr = self.set_states(self.ts_in, self.nb_states)
         ts_disrete = self.rediscretize_ts_in(self.ts_in, self.state_maps)
@@ -481,6 +486,19 @@ class ForecastEmulator:
             # Extract correct slice
             reference = reference.loc[t0:tend]
 
+        # Replace reference if all the values are 0
+        all_zeros_or_tiny = all((reference == 0) | (reference.between(1e-6,1e-6,inclusive = 'both')))
+        if all_zeros_or_tiny:
+            warnings.warn("Reference data contains only zeros or tiny values, error mtric cannot defined. Mean values in self.ts_in considered instead",
+                          UserWarning
+                          )
+
+            for idx in reference.index:
+                hour,minute = idx.hour,idx.minute
+                reference.loc[idx] = self.ts_in_mean.loc[(hour,minute)]
+
+
+        # Generate profiles
         start_value = reference.iloc[0]
 
         profiles = self.generate_profiles(n_profiles,
