@@ -489,7 +489,8 @@ class ForecastEmulator:
         # Replace reference if all the values are 0
         all_zeros_or_tiny = all((reference == 0) | (reference.between(1e-6,1e-6,inclusive = 'both')))
         if all_zeros_or_tiny:
-            warnings.warn("Reference data contains only zeros or tiny values, error mtric cannot defined. Mean values in self.ts_in considered instead",
+            warnings.warn("Reference data contains only zeros or tiny values, normalized error metric cannot be "
+                          "defined. Mean values in self.ts_in considered instead",
                           UserWarning
                           )
 
@@ -580,6 +581,23 @@ class ForecastEmulator:
         morph_func = {"nrmse": morph_nrmse,"nmae": morph_nmae, 'eof': morph_eof}[metric.lower()]
         tuned_profile = morph_func(reference.values,best_profile.values,target_error)
         tuned_profile = pd.Series(tuned_profile,index = reference.index)
+
+        #correct profile if needed
+        corected_profile = False
+        for idx in tuned_profile.index:
+            hour,minute = idx.hour,idx.minute
+            if tuned_profile.loc[idx] < self.ts_in_min.loc[(hour,minute)]:
+                tuned_profile.loc[idx] = self.ts_in_min.loc[(hour,minute)]
+                corected_profile = True
+            if tuned_profile.loc[idx] > self.ts_in_max.loc[(hour,minute)]:
+                tuned_profile.loc[idx] = self.ts_in_max.loc[(hour,minute)]
+                corected_profile = True
+
+        if corected_profile :
+            warnings.warn("Generated profile out of bounds. Clipped to min/max values from training data.",
+                         UserWarning
+                         )
+
 
         return reference, tuned_profile
 
