@@ -11,9 +11,9 @@ import seaborn as sns
 import random
 from tqdm import tqdm
 
-from utils import morph_nrmse,morph_nmae,morph_eof
-from utils import nrmse,nmae,eof
-from utils import validate_timeseries
+from emucast.utils import morph_nrmse,morph_nmae,morph_eof
+from emucast.utils import nrmse,nmae,eof
+from emucast.utils import validate_timeseries
 
 
 class ForecastEmulator:
