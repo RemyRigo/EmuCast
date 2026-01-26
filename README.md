@@ -24,7 +24,7 @@ strategies.
 You can install directly from GitHub:
 
 ```bash
-pip install git+https://github.com/RemyRigo/EmuCast.git
+pip install git https://github.com/RemyRigo/EmuCast.git
 ```
 
 Or, for development (editable) mode:

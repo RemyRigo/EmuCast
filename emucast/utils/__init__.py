@@ -1,3 +1,3 @@
-from utils.check_ts import *
-from utils.error_fcts import *
-from utils.morph_fcts import *
+from .check_ts import *
+from .error_fcts import *
+from .morph_fcts import *
