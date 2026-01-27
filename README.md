@@ -21,7 +21,9 @@ strategies.
 
 ## Installation
 
-You can install directly from GitHub:
+You can install in any Python environment.
+
+Directly from GitHub:
 
 ```bash
 pip install git https://github.com/RemyRigo/EmuCast.git
