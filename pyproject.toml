@@ -15,7 +15,9 @@ dependencies = [
             "numpy",
             "matplotlib",
             "seaborn",
-            "setuptools"
+            "setuptools",
+            "tqdm",
+            "openpyxl",
 ]
 
 [tool.setuptools.packages.find]
