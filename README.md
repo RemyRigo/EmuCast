@@ -18,6 +18,10 @@ providing a practical and efficient way to evaluate and improve the robustness o
 strategies.
 
 ---
+## More infos
+Rémy Rigo-Mariani, Zhewei Zhang. EmuCast: A python package for generating time series forecasts with tunable error in model predictive control design and testing. SoftwareX, 2026, 34, pp.102574.
+[open access](https://doi-org.sid2nomade-1.grenet.fr/10.1016/j.softx.2026.102574)
+---
 
 ## Installation
 
