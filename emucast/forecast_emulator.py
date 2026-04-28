@@ -444,89 +444,6 @@ class ForecastEmulator:
             plt.ylabel('score')
             plt.show()
 
-    def generate_forecast_profiles(self,
-                                  n_profiles,
-                                  start_time,
-                                  duration_minutes,
-                                  reference=None,
-                                  metric="nrmse"
-                                  ):
-        """
-        Generate forecast scenarios and compute errors against a reference time series.
-        """
-        # Generate scenarios first
-        total_duration = timedelta(minutes=duration_minutes)
-        t0 = start_time - self.deltaT
-        tend = t0 + pd.Timedelta(minutes = duration_minutes)
-        n_steps = int(total_duration / self.deltaT) + 1
-
-        # --- Reference time series ---
-        if reference is None:
-            if self.ts_in is None:
-                raise ValueError("No reference series provided and self.ts_in is None")
-
-            # Redundant check for object attribute
-            validate_timeseries(self.ts_in)
-
-            if not (t0 in self.ts_in.index and tend in self.ts_in.index):
-                raise ValueError(f"Reference ts_in must cover range {t0} to {tend}")
-
-            # Extract reference horizon (exclude initial known value)
-            reference = self.ts_in.loc[t0:tend]
-
-        else:
-
-            #Check that the input reference is a time serie
-            validate_timeseries(reference)
-
-            # Check required range
-            if not (t0 in reference.index and tend in reference.index):
-                raise ValueError(f"Reference must cover range {t0} to {tend}")
-
-            # Extract correct slice
-            reference = reference.loc[t0:tend]
-
-        # Replace reference if all the values are 0
-        all_zeros_or_tiny = all((reference == 0) | (reference.between(1e-6,1e-6,inclusive = 'both')))
-        if all_zeros_or_tiny:
-            warnings.warn("Reference data contains only zeros or tiny values, normalized error metric cannot be "
-                          "defined. Mean values in self.ts_in considered instead",
-                          UserWarning
-                          )
-
-            for idx in reference.index:
-                hour,minute = idx.hour,idx.minute
-                reference.loc[idx] = self.ts_in_mean.loc[(hour,minute)]
-
-
-        # Generate profiles
-        start_value = reference.iloc[0]
-
-        profiles = self.generate_profiles(n_profiles,
-                                          t0.hour,
-                                          t0.minute,
-                                          start_value,
-                                          n_steps)
-
-        # --- Retaylor to fit the forecast hoziron ---
-        profiles=profiles[1:,:]
-        reference = reference.iloc[1:]
-
-        # Convert to pandas objects
-        timestamps = reference.index
-
-        # Choose metric
-        metric_func = {"nrmse": nrmse,"nmae": nmae, 'eof': eof}[metric.lower()]
-
-        # Compute errors per scenario
-        errors = np.array([metric_func(reference.values,profiles[:,i]) for i in range(n_profiles)])
-
-        profiles_df = pd.DataFrame(profiles,index = timestamps,
-                                   columns = [f"scen_{i}" for i in range(n_profiles)]
-                                   )
-
-        return profiles_df, reference, errors
-
     def select_profile(self,
                        profiles,
                        errors,
@@ -551,6 +468,90 @@ class ForecastEmulator:
         error_profile = errors [best_idx]
 
         return best_profile, error_profile
+
+    def generate_forecast_profiles(self,
+                                        n_profiles,
+                                        start_time,
+                                        duration_minutes,
+                                        reference=None,
+                                        metric="nrmse"
+                                        ):
+
+        total_duration = timedelta(minutes = duration_minutes)
+        t0 = start_time - self.deltaT
+        tend = t0 + pd.Timedelta(minutes = duration_minutes)
+        n_steps = int(total_duration / self.deltaT) + 1
+
+        # --- Reference handling ---
+        if reference is None:
+            validate_timeseries(self.ts_in)
+            if not (t0 in self.ts_in.index and tend in self.ts_in.index):
+                raise ValueError(f"Reference ts_in must cover range {t0} to {tend}")
+            reference = self.ts_in.loc[t0:tend]
+        else:
+            validate_timeseries(reference)
+            if not (t0 in reference.index and tend in reference.index):
+                raise ValueError(f"Reference must cover range {t0} to {tend}")
+            reference = reference.loc[t0:tend]
+
+        # Handle degenerate reference
+        all_zeros_or_tiny = all((reference == 0) | (reference.between(1e-6,1e-6)))
+        if all_zeros_or_tiny:
+            for idx in reference.index:
+                reference.loc[idx] = self.ts_in_mean.loc[(idx.hour,idx.minute)]
+
+        # --- INITIAL STATE ---
+        start_val = reference.iloc[0]
+        t_init = t0.time()
+        state_vals = self.state_maps_arr[t_init]
+
+        start_state = np.argmin(np.abs(state_vals - start_val))
+        current_states = np.full(n_profiles,start_state,dtype = int)
+
+        profiles = np.zeros((n_steps,n_profiles))
+        profiles[0,:] = state_vals[start_state]
+
+        timestamps = [t0 + i * self.deltaT for i in range(n_steps)]
+
+        # --- VECTORIAL SIMULATION ---
+        for i in range(1,n_steps):
+            t = timestamps[i - 1].time()
+            mat = self.trans_matrices_arr[t]
+            state_vals = self.state_maps_arr[t]
+
+            current_states = np.clip(current_states,0,mat.shape[0] - 1)
+
+            probs = mat[current_states]
+            cum_probs = np.cumsum(probs,axis = 1)
+            r = np.random.rand(n_profiles,1)
+
+            current_states = (cum_probs < r).sum(axis = 1)
+            profiles[i,:] = state_vals[current_states]
+
+        # Align with original behavior
+        profiles = profiles[1:,:]
+        reference = reference.iloc[1:]
+        timestamps = reference.index
+
+        # --- KEEP UTILS METRICS ---
+        metric_func = {
+            "nrmse": nrmse,
+            "nmae": nmae,
+            "eof": eof
+        }[metric.lower()]
+
+        ref_vals = reference.values  # compute once
+
+        # Slightly optimized loop (still uses utils)
+        errors = metric_func(ref_vals,profiles)  # profiles: (T, N)
+
+        profiles_df = pd.DataFrame(
+            profiles,
+            index = timestamps,
+            columns = [f"scen_{i}" for i in range(n_profiles)]
+        )
+
+        return profiles_df,reference,errors
 
     def forecast(self,
                 start_time : datetime,
@@ -577,6 +578,7 @@ class ForecastEmulator:
                                            target_error = target_error,
                                            selection = selection)
 
+
         #select and apply the morphing function to the selected forecast
         morph_func = {"nrmse": morph_nrmse,"nmae": morph_nmae, 'eof': morph_eof}[metric.lower()]
         tuned_profile = morph_func(reference.values,best_profile.values,target_error)
@@ -597,7 +599,6 @@ class ForecastEmulator:
             warnings.warn("Generated profile out of bounds. Clipped to min/max values from training data.",
                          UserWarning
                          )
-
 
         return reference, tuned_profile
 
