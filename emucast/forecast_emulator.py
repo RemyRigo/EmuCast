@@ -19,7 +19,7 @@ from emucast.utils import validate_timeseries
 class ForecastEmulator:
     def __init__(self,
                  ts_in: pd.Series,  # input time series as a single column array (or list)
-                 nb_states: int = 30,  # number of states at every time steps - default
+                 nb_states: int = 100,  # number of states at every time steps - default
                  nb_forecast_profiles: int = 300 # numbers of forecast scenarios profiles
                  ):
 
@@ -359,7 +359,7 @@ class ForecastEmulator:
         # setup parameters for the tuning
         Ndates = 3
         Nruns = 10
-        nb_states_test = np.linspace(5,100,20,dtype = int)
+        nb_states_test = np.linspace(20,300,15,dtype = int)
         n_steps = int(3600 * 24 / self.deltaT.total_seconds())
 
         # generate random start dates for the tuning
@@ -432,7 +432,7 @@ class ForecastEmulator:
         # setup parameters for the tuning
         Ndates = 3
         Nruns = 10
-        nb_profiles_test = np.linspace(50,500,10, dtype=int)
+        nb_profiles_test = np.linspace(50,1000,20, dtype=int)
 
         # Generate profile along the random dates
         perf_arr = np.zeros((len(nb_profiles_test),Nruns))
