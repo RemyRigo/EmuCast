@@ -177,10 +177,35 @@ class ForecastEmulator:
             mat[s_curr,s_next] += 1
 
         # Normalize to probabilities
+        #for t,mat in trans_matrices.items():
+            # row_sums = mat.sum(axis = 1,keepdims = True)
+            # row_sums[row_sums == 0] = 1  # avoid division by zero
+            # trans_matrices[t] = mat / row_sums
+            # Normalize with smoothness bias
+
+        lambda_smooth = n/20
+        # tune this parameter
         for t,mat in trans_matrices.items():
-            row_sums = mat.sum(axis = 1,keepdims = True)
-            row_sums[row_sums == 0] = 1  # avoid division by zero
-            trans_matrices[t] = mat / row_sums
+            n_states = mat.shape[1]
+            states = np.arange(n_states)
+            for i in range(mat.shape[0]):
+                row = mat[i].astype(float)
+                # If row empty -> uniform
+                if row.sum() == 0:
+                    row[:] = 1.0
+                # Distance from current state
+                dist = np.abs(states - i)
+                # Exponential smoothing kernel
+                kernel = np.exp(-dist / lambda_smooth)
+                # Apply bias toward nearby states
+                row *= kernel
+                # Optional persistence bonus
+                row[i] *= 1.2
+                # Normalize row
+                row /= row.sum()
+                mat[i] = row
+
+            trans_matrices[t] = mat
 
         # Transition matrices: dict[time] -> ndarray -- for code optimization purposes
         trans_matrices_arr = {t: np.array(mat) for t,mat in trans_matrices.items()}
